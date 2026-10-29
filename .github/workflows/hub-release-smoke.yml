@@ -45,8 +45,16 @@ jobs:
               'inno' { $installArgs = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /DIR="' + $installDir + '"' }
               'jelly' { $installArgs = '--quiet --hub-install --install-root "' + $installDir + '"' }
             }
+            if ($product.kind -eq 'jelly') {
+            $installed = Start-Process -FilePath $download -ArgumentList $installArgs -Verb RunAs -Wait -PassThru
+          } else {
             $installed = Start-Process -FilePath $download -ArgumentList $installArgs -Wait -PassThru
-            if ($installed.ExitCode -ne 0) { throw "$($product.id): installer exited $($installed.ExitCode)" }
+          }
+            if ($installed.ExitCode -ne 0) {
+            $errorFile = Join-Path $env:TEMP 'JELLY-Setup-last-error.txt'
+            if (Test-Path $errorFile) { Get-Content -Raw $errorFile | Write-Host }
+            throw "$($product.id): installer exited $($installed.ExitCode)"
+          }
             $exePath = Join-Path $installDir ($product.exe -replace '/', '\')
             if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
               $found = Get-ChildItem -LiteralPath $installDir -Filter '*.exe' -File -Recurse | ForEach-Object { $_.FullName.Substring($installDir.Length + 1) }
@@ -125,6 +133,7 @@ jobs:
           if ($envelope.keyId -ne 'lentora-suite-catalog-2026-10') { throw "Unexpected catalog key id $($envelope.keyId)" }
           if ($process.HasExited) { throw "Lentora Hub exited with code $($process.ExitCode)" }
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Hub: installed and launched; fetched signature-verified catalog revision $($metaValue.lastRevision) with six products"
+
 
 
 
