@@ -30,7 +30,7 @@ jobs:
             @{ id='quickprint'; tag='lentora-quickprint-v2.2.0'; asset='QuickPrint-Setup-2.2.0.exe'; sha='9328683c5e468155ebce7513dcdb9e54c8d3be81fe30b7920b32d931ca3b84f1'; kind='inno'; exe='QuickPrint.exe' },
             @{ id='printi'; tag='lentora-printi-v1.2.0'; asset='PRINTI-Setup-1.2.0.exe'; sha='e699ac6085d5b95419b969ee8ff8dd7fccbc365840ebf8ce642de701ea78bae2'; kind='inno'; exe='PRINTI.exe' }
           )
-          $root = Join-Path $env:RUNNER_TEMP 'Lentora-Hub-Product-Smoke'
+          $root = Join-Path $env:LOCALAPPDATA 'Lentora-Hub-Product-Smoke'
           New-Item -ItemType Directory -Path $root -Force | Out-Null
           foreach ($product in $products) {
             Write-Host "Testing $($product.id)"
@@ -133,6 +133,7 @@ jobs:
           if ($envelope.keyId -ne 'lentora-suite-catalog-2026-10') { throw "Unexpected catalog key id $($envelope.keyId)" }
           if ($process.HasExited) { throw "Lentora Hub exited with code $($process.ExitCode)" }
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Hub: installed and launched; fetched signature-verified catalog revision $($metaValue.lastRevision) with six products"
+
 
 
 
