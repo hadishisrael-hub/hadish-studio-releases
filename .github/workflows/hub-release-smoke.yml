@@ -1,0 +1,130 @@
+name: Hub release smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      verify_hub:
+        description: "Also install Hub and verify its signed catalog connection"
+        required: false
+        type: boolean
+        default: false
+
+permissions: {}
+
+jobs:
+  windows-smoke:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - name: Download, install, and uninstall the six listed products
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          $base = 'https://github.com/hadishisrael-hub/hadish-studio-releases/releases/download'
+          $products = @(
+            @{ id='studio'; tag='lentora-studio-full-preview-v0.1.48'; asset='LentoraStudio-0.1.48-Setup.exe'; sha='cd0812704c01473b19ce66b58291b5d8cdf83d3a846244fd47d2a2e90ef03c72'; kind='nsis'; exe='hadish-studio.exe' },
+            @{ id='business'; tag='lentora-business-v0.3.7'; asset='Lentora.Business_0.3.7_x64-setup.exe'; sha='cd0944108b92629010562f1375b58d51492c78388a0784e172c06bb315ae55ae'; kind='nsis'; exe='lentora-business-desktop.exe' },
+            @{ id='picsearch'; tag='lentora-picsearch-full-preview-v0.4.0-beta.7'; asset='PicSearch-0.4.0-beta.7-Setup.exe'; sha='929b26cbd7d0fd936555972e1fb1f5f7c61d28cf5ef560bbd62df1a1513273a9'; kind='nsis'; exe='picsearch.exe' },
+            @{ id='jelly'; tag='lentora-jelly-v0.7.0'; asset='JELLY-Setup-0.7.0.exe'; sha='1805ad6fde414f4b6b4274e9fc78f8ccd12b8ed0233f1f95ff9453b685cfcc77'; kind='jelly'; exe='App/ShopAssistant.App.exe' },
+            @{ id='quickprint'; tag='lentora-quickprint-v2.2.0'; asset='QuickPrint-Setup-2.2.0.exe'; sha='9328683c5e468155ebce7513dcdb9e54c8d3be81fe30b7920b32d931ca3b84f1'; kind='inno'; exe='QuickPrint.exe' },
+            @{ id='printi'; tag='lentora-printi-v1.2.0'; asset='PRINTI-Setup-1.2.0.exe'; sha='e699ac6085d5b95419b969ee8ff8dd7fccbc365840ebf8ce642de701ea78bae2'; kind='inno'; exe='PRINTI.exe' }
+          )
+          $root = Join-Path $env:RUNNER_TEMP 'Lentora-Hub-Product-Smoke'
+          New-Item -ItemType Directory -Path $root -Force | Out-Null
+          foreach ($product in $products) {
+            Write-Host "Testing $($product.id)"
+            $download = Join-Path $root $product.asset
+            $installDir = Join-Path $root $product.id
+            New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+            Invoke-WebRequest -Uri "$base/$($product.tag)/$($product.asset)" -OutFile $download
+            $actualSha = (Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actualSha -ne $product.sha) { throw "$($product.id): downloaded SHA-256 mismatch" }
+            switch ($product.kind) {
+              'nsis' { $installArgs = "/S /D=$installDir" }
+              'inno' { $installArgs = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /DIR="' + $installDir + '"' }
+              'jelly' { $installArgs = '--quiet --hub-install --install-root "' + $installDir + '"' }
+            }
+            $installed = Start-Process -FilePath $download -ArgumentList $installArgs -Wait -PassThru
+            if ($installed.ExitCode -ne 0) { throw "$($product.id): installer exited $($installed.ExitCode)" }
+            $exePath = Join-Path $installDir ($product.exe -replace '/', '\')
+            if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
+              $found = Get-ChildItem -LiteralPath $installDir -Filter '*.exe' -File -Recurse | ForEach-Object { $_.FullName.Substring($installDir.Length + 1) }
+              throw "$($product.id): expected executable missing at $($product.exe); found: $($found -join ', ')"
+            }
+            $uninstaller = if ($product.kind -eq 'jelly') {
+              Join-Path $installDir 'Uninstall-JELLY.exe'
+            } elseif ($product.kind -eq 'inno') {
+              Join-Path $installDir 'unins000.exe'
+            } else {
+              Get-ChildItem -LiteralPath $installDir -Filter '*uninstall*.exe' -File -Recurse | Select-Object -First 1 -ExpandProperty FullName
+            }
+            if (-not $uninstaller -or -not (Test-Path -LiteralPath $uninstaller -PathType Leaf)) {
+              throw "$($product.id): expected uninstaller missing"
+            }
+            if ($product.id -eq 'printi') {
+              Set-Content -LiteralPath (Join-Path $installDir 'config.json') -Value '{"hubSmokeMarker":"preserve"}' -Encoding utf8
+            }
+            if ($product.kind -eq 'nsis') {
+              $removeArgs = "/S _?=$installDir"
+            } elseif ($product.kind -eq 'inno') {
+              $removeArgs = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-'
+            } else {
+              $removeArgs = '--quiet'
+            }
+            $removed = Start-Process -FilePath $uninstaller -ArgumentList $removeArgs -Wait -PassThru
+            if ($removed.ExitCode -ne 0) { throw "$($product.id): uninstaller exited $($removed.ExitCode)" }
+            if (Test-Path -LiteralPath $exePath) { throw "$($product.id): executable remains after uninstall" }
+            if ($product.id -eq 'printi') {
+              $config = Join-Path $installDir 'config.json'
+              if (-not (Test-Path -LiteralPath $config) -or (Get-Content -Raw $config) -notmatch 'hubSmokeMarker') {
+                throw 'PRINTI: config.json was not preserved by uninstall'
+              }
+            }
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- $($product.id): verified download hash, silent install, executable, and uninstall"
+          }
+
+      - name: Install Hub and verify signed catalog
+        if: inputs.verify_hub
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          $base = 'https://github.com/hadishisrael-hub/hadish-studio-releases/releases/download'
+          $tag = 'lentora-hub-v0.1.0'
+          $asset = 'LentoraHub_0.1.0_x64-setup.exe'
+          $sha = '74b8ec06df6a4d364cbeaa190d87eb9cad02815c673f384f38ce0a25287ed3b9'
+          $download = Join-Path $env:RUNNER_TEMP $asset
+          $installDir = Join-Path $env:RUNNER_TEMP 'Lentora-Hub-Install'
+          $profile = Join-Path $env:RUNNER_TEMP 'Lentora-Hub-Profile'
+          Invoke-WebRequest -Uri "$base/$tag/$asset" -OutFile $download
+          if ((Get-FileHash $download -Algorithm SHA256).Hash.ToLowerInvariant() -ne $sha) { throw 'Hub installer SHA-256 mismatch' }
+          $setup = Start-Process -FilePath $download -ArgumentList "/S /D=$installDir" -Wait -PassThru
+          if ($setup.ExitCode -ne 0) { throw "Hub setup exited $($setup.ExitCode)" }
+          $env:LENTORA_HUB_DATA_DIR = Join-Path $profile 'data'
+          $env:LENTORA_HUB_REGISTRY_DIR = Join-Path $profile 'registry'
+          $env:LENTORA_HUB_MODELS_DIR = Join-Path $profile 'models'
+          $env:LENTORA_HUB_INSTALL_ROOT = Join-Path $profile 'apps'
+          $env:LENTORA_HUB_PROFILE_LABEL = 'Disposable GitHub Actions smoke profile'
+          $app = Get-ChildItem -LiteralPath $installDir -Filter '*.exe' -File -Recurse | Where-Object { $_.Name -notmatch '(?i)uninstall' } | Select-Object -First 1
+          if (-not $app) { throw 'Installed Lentora Hub.exe was not found' }
+          $process = Start-Process -FilePath $app.FullName -PassThru
+          $cache = Join-Path $env:LENTORA_HUB_DATA_DIR 'catalog/catalog.json'
+          $meta = Join-Path $env:LENTORA_HUB_DATA_DIR 'catalog/meta.json'
+          $deadline = (Get-Date).AddSeconds(120)
+          while ((-not (Test-Path $cache)) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
+          if (-not (Test-Path $cache) -or -not (Test-Path $meta)) { throw 'Hub did not save a verified catalog within 120 seconds' }
+          $envelope = Get-Content -Raw $cache | ConvertFrom-Json
+          $manifestBytes = [Convert]::FromBase64String($envelope.payload)
+          $manifest = [Text.Encoding]::UTF8.GetString($manifestBytes) | ConvertFrom-Json
+          $metaValue = Get-Content -Raw $meta | ConvertFrom-Json
+          $ids = @($manifest.products | ForEach-Object { $_.id } | Sort-Object)
+          $expected = @('lentora.business','lentora.jelly','lentora.picsearch','lentora.printi','lentora.quickprint','lentora.studio') | Sort-Object
+          if (($ids -join ',') -ne ($expected -join ',')) { throw "Catalog product ids mismatch: $($ids -join ',')" }
+          if ($metaValue.lastRevision -ne 1) { throw "Expected catalog revision 1, got $($metaValue.lastRevision)" }
+          if ($envelope.keyId -ne 'lentora-suite-catalog-2026-10') { throw "Unexpected catalog key id $($envelope.keyId)" }
+          if ($process.HasExited) { throw "Lentora Hub exited with code $($process.ExitCode)" }
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Hub: installed and launched; fetched signature-verified catalog revision $($metaValue.lastRevision) with six products"
+
+
+
