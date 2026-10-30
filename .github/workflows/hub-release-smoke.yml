@@ -8,6 +8,11 @@ on:
         required: false
         type: boolean
         default: false
+      hub_tag:
+        description: "Hub release tag used by signed-catalog smoke"
+        required: false
+        type: string
+        default: "lentora-hub-v0.1.0-rc.1"
 
 permissions: {}
 
@@ -95,11 +100,14 @@ jobs:
       - name: Install Hub and verify signed catalog
         if: inputs.verify_hub
         shell: pwsh
+        env:
+          HUB_TAG: ${{ inputs.hub_tag }}
         run: |
           $ErrorActionPreference = 'Stop'
           $ProgressPreference = 'SilentlyContinue'
           $base = 'https://github.com/hadishisrael-hub/hadish-studio-releases/releases/download'
-          $tag = 'lentora-hub-v0.1.0'
+          $tag = $env:HUB_TAG
+          if ($tag -notmatch '^lentora-hub-v0\.1\.0(-rc\.\d+)?$') { throw 'Unexpected Hub tag input' }
           $asset = 'LentoraHub_0.1.0_x64-setup.exe'
           $sha = '74b8ec06df6a4d364cbeaa190d87eb9cad02815c673f384f38ce0a25287ed3b9'
           $download = Join-Path $env:RUNNER_TEMP $asset
