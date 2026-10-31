@@ -12,7 +12,7 @@ on:
         description: "Hub release tag used by signed-catalog smoke"
         required: false
         type: string
-        default: "lentora-hub-v0.1.0-rc.1"
+        default: "lentora-hub-v0.1.1-rc.1"
 
 permissions: {}
 
@@ -28,7 +28,7 @@ jobs:
           $ProgressPreference = 'SilentlyContinue'
           $base = 'https://github.com/hadishisrael-hub/hadish-studio-releases/releases/download'
           $products = @(
-            @{ id='studio'; tag='lentora-studio-full-preview-v0.1.48'; asset='LentoraStudio-0.1.48-Setup.exe'; sha='cd0812704c01473b19ce66b58291b5d8cdf83d3a846244fd47d2a2e90ef03c72'; kind='nsis'; exe='hadish-studio.exe' },
+            @{ id='studio'; tag='lentora-studio-full-preview-v0.1.49'; asset='LentoraStudio-0.1.49-Setup.exe'; sha='0d4bfed273fb08ef6a8822898db47c091b3e9357129abd90ce7d3d2e04714bef'; kind='nsis'; exe='hadish-studio.exe' },
             @{ id='business'; tag='lentora-business-v0.3.7'; asset='Lentora.Business_0.3.7_x64-setup.exe'; sha='cd0944108b92629010562f1375b58d51492c78388a0784e172c06bb315ae55ae'; kind='nsis'; exe='lentora-business-desktop.exe' },
             @{ id='picsearch'; tag='lentora-picsearch-full-preview-v0.4.0-beta.7'; asset='PicSearch-0.4.0-beta.7-Setup.exe'; sha='929b26cbd7d0fd936555972e1fb1f5f7c61d28cf5ef560bbd62df1a1513273a9'; kind='nsis'; exe='picsearch.exe' },
             @{ id='jelly'; tag='lentora-jelly-v0.7.0'; asset='JELLY-Setup-0.7.0.exe'; sha='1805ad6fde414f4b6b4274e9fc78f8ccd12b8ed0233f1f95ff9453b685cfcc77'; kind='jelly'; exe='App/ShopAssistant.App.exe' },
@@ -107,9 +107,9 @@ jobs:
           $ProgressPreference = 'SilentlyContinue'
           $base = 'https://github.com/hadishisrael-hub/hadish-studio-releases/releases/download'
           $tag = $env:HUB_TAG
-          if ($tag -notmatch '^lentora-hub-v0\.1\.0(-rc\.\d+)?$') { throw 'Unexpected Hub tag input' }
-          $asset = 'LentoraHub_0.1.0_x64-setup.exe'
-          $sha = '74b8ec06df6a4d364cbeaa190d87eb9cad02815c673f384f38ce0a25287ed3b9'
+          if ($tag -notmatch '^lentora-hub-v0\.1\.1(-rc\.\d+)?$') { throw 'Unexpected Hub tag input' }
+          $asset = 'LentoraHub_0.1.1_x64-setup.exe'
+          $sha = '9f49e43e9d35862d0e5f1a9481db1eaf55acf6f5ca0f7bdb859412161c73da05'
           $download = Join-Path $env:RUNNER_TEMP $asset
           $installDir = Join-Path $env:RUNNER_TEMP 'Lentora-Hub-Install'
           $profile = Join-Path $env:RUNNER_TEMP 'Lentora-Hub-Profile'
@@ -137,7 +137,7 @@ jobs:
           $ids = @($manifest.products | ForEach-Object { $_.id } | Sort-Object)
           $expected = @('lentora.business','lentora.jelly','lentora.picsearch','lentora.printi','lentora.quickprint','lentora.studio') | Sort-Object
           if (($ids -join ',') -ne ($expected -join ',')) { throw "Catalog product ids mismatch: $($ids -join ',')" }
-          if ($metaValue.lastRevision -ne 1) { throw "Expected catalog revision 1, got $($metaValue.lastRevision)" }
+          if ($metaValue.lastRevision -ne 2) { throw "Expected catalog revision 2, got $($metaValue.lastRevision)" }
           if ($envelope.keyId -ne 'lentora-suite-catalog-2026-10') { throw "Unexpected catalog key id $($envelope.keyId)" }
           if ($process.HasExited) { throw "Lentora Hub exited with code $($process.ExitCode)" }
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Hub: installed and launched; fetched signature-verified catalog revision $($metaValue.lastRevision) with six products"
