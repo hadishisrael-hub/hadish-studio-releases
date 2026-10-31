@@ -12,7 +12,7 @@ on:
         description: "Hub release tag used by signed-catalog smoke"
         required: false
         type: string
-        default: "lentora-hub-v0.1.1-rc.1"
+        default: "lentora-hub-v0.1.2-rc.1"
 
 permissions: {}
 
@@ -107,9 +107,9 @@ jobs:
           $ProgressPreference = 'SilentlyContinue'
           $base = 'https://github.com/hadishisrael-hub/hadish-studio-releases/releases/download'
           $tag = $env:HUB_TAG
-          if ($tag -notmatch '^lentora-hub-v0\.1\.1(-rc\.\d+)?$') { throw 'Unexpected Hub tag input' }
-          $asset = 'LentoraHub_0.1.1_x64-setup.exe'
-          $sha = '9f49e43e9d35862d0e5f1a9481db1eaf55acf6f5ca0f7bdb859412161c73da05'
+          if ($tag -notmatch '^lentora-hub-v0\.1\.2(-rc\.\d+)?$') { throw 'Unexpected Hub tag input' }
+          $asset = 'LentoraHub_0.1.2_x64-setup.exe'
+          $sha = '4b4b406ccbef0f09b840145f522d9549b6c1336db7763b725cc3deb08b89948e'
           $download = Join-Path $env:RUNNER_TEMP $asset
           $installDir = Join-Path $env:RUNNER_TEMP 'Lentora-Hub-Install'
           $profile = Join-Path $env:RUNNER_TEMP 'Lentora-Hub-Profile'
@@ -137,7 +137,16 @@ jobs:
           $ids = @($manifest.products | ForEach-Object { $_.id } | Sort-Object)
           $expected = @('lentora.business','lentora.jelly','lentora.picsearch','lentora.printi','lentora.quickprint','lentora.studio') | Sort-Object
           if (($ids -join ',') -ne ($expected -join ',')) { throw "Catalog product ids mismatch: $($ids -join ',')" }
-          if ($metaValue.lastRevision -ne 2) { throw "Expected catalog revision 2, got $($metaValue.lastRevision)" }
+          $expectedRevision = if ($tag -eq 'lentora-hub-v0.1.2') { 3 } else { 2 }
+          if ($metaValue.lastRevision -ne $expectedRevision) { throw "Expected catalog revision $expectedRevision, got $($metaValue.lastRevision)" }
+          if ($tag -eq 'lentora-hub-v0.1.2') {
+            $offer = $manifest.hub_update
+            if ($offer.version -ne '0.1.2') { throw 'Signed catalog does not offer Hub 0.1.2' }
+            if ($offer.installer.bytes -ne 3182524 -or $offer.installer.sha256 -ne $sha -or $offer.installer.url -ne "$base/lentora-hub-v0.1.2/$asset") {
+              throw 'Signed catalog Hub update artifact does not match the published 0.1.2 installer'
+            }
+          }
+
           if ($envelope.keyId -ne 'lentora-suite-catalog-2026-10') { throw "Unexpected catalog key id $($envelope.keyId)" }
           if ($process.HasExited) { throw "Lentora Hub exited with code $($process.ExitCode)" }
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Hub: installed and launched; fetched signature-verified catalog revision $($metaValue.lastRevision) with six products"
