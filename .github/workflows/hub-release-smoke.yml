@@ -12,7 +12,7 @@ on:
         description: "Hub release tag used by signed-catalog smoke"
         required: false
         type: string
-        default: "lentora-hub-v0.1.2-rc.1"
+        default: "lentora-hub-v0.1.3"
 
 permissions: {}
 
@@ -107,13 +107,15 @@ jobs:
           $ProgressPreference = 'SilentlyContinue'
           $base = 'https://github.com/hadishisrael-hub/hadish-studio-releases/releases/download'
           $tag = $env:HUB_TAG
-          if ($tag -notmatch '^lentora-hub-v0\.1\.2(-rc\.\d+)?$') { throw 'Unexpected Hub tag input' }
-          $asset = 'LentoraHub_0.1.2_x64-setup.exe'
-          $sha = '4b4b406ccbef0f09b840145f522d9549b6c1336db7763b725cc3deb08b89948e'
+          if ($tag -notmatch '^lentora-hub-v0\.1\.3$') { throw 'Unexpected Hub tag input' }
+          $asset = 'LentoraHub_0.1.3_x64-setup.exe'
+          $bytes = 4997574
+          $sha = '059b4596347ca75242c5ac3729c5cf470437b7a0eda6370913a5cadc652664cf'
           $download = Join-Path $env:RUNNER_TEMP $asset
           $installDir = Join-Path $env:RUNNER_TEMP 'Lentora-Hub-Install'
           $profile = Join-Path $env:RUNNER_TEMP 'Lentora-Hub-Profile'
           Invoke-WebRequest -Uri "$base/$tag/$asset" -OutFile $download
+          if ((Get-Item -LiteralPath $download).Length -ne $bytes) { throw 'Hub installer byte length mismatch' }
           if ((Get-FileHash $download -Algorithm SHA256).Hash.ToLowerInvariant() -ne $sha) { throw 'Hub installer SHA-256 mismatch' }
           $setup = Start-Process -FilePath $download -ArgumentList "/S /D=$installDir" -Wait -PassThru
           if ($setup.ExitCode -ne 0) { throw "Hub setup exited $($setup.ExitCode)" }
@@ -137,13 +139,13 @@ jobs:
           $ids = @($manifest.products | ForEach-Object { $_.id } | Sort-Object)
           $expected = @('lentora.business','lentora.jelly','lentora.picsearch','lentora.printi','lentora.quickprint','lentora.studio') | Sort-Object
           if (($ids -join ',') -ne ($expected -join ',')) { throw "Catalog product ids mismatch: $($ids -join ',')" }
-          $expectedRevision = if ($tag -eq 'lentora-hub-v0.1.2') { 3 } else { 2 }
+          $expectedRevision = 4
           if ($metaValue.lastRevision -ne $expectedRevision) { throw "Expected catalog revision $expectedRevision, got $($metaValue.lastRevision)" }
-          if ($tag -eq 'lentora-hub-v0.1.2') {
+          if ($tag -eq 'lentora-hub-v0.1.3') {
             $offer = $manifest.hub_update
-            if ($offer.version -ne '0.1.2') { throw 'Signed catalog does not offer Hub 0.1.2' }
-            if ($offer.installer.bytes -ne 3182524 -or $offer.installer.sha256 -ne $sha -or $offer.installer.url -ne "$base/lentora-hub-v0.1.2/$asset") {
-              throw 'Signed catalog Hub update artifact does not match the published 0.1.2 installer'
+            if ($offer.version -ne '0.1.3') { throw 'Signed catalog does not offer Hub 0.1.3' }
+            if ($offer.installer.bytes -ne $bytes -or $offer.installer.sha256 -ne $sha -or $offer.installer.url -ne "$base/lentora-hub-v0.1.3/$asset") {
+              throw 'Signed catalog Hub update artifact does not match the published 0.1.3 installer'
             }
           }
 
